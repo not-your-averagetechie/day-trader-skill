@@ -46,11 +46,42 @@ function read(a){
   const live=a.views.filter(x=>x.signal);pts.push(live.length?`<b>Signal firing now:</b> ${live.map(x=>x.interval+' '+x.signal.toUpperCase()).join(', ')}.`:'No 5m or 15m signal on the last completed candle right now.');
   return `<ul>${pts.map(p=>`<li>${p}</li>`).join('')}</ul>`;
 }
+let dirState=null;
+function dirCard(){
+  if(!dirState)return '<div class="card"><h2>BTC direction · 5m / 15m</h2><span class="mut">Running the walk-forward test on 17 days of 5m and 52 days of 15m candles…</span></div>';
+  if(dirState.error)return `<div class="card"><h2>BTC direction</h2>Error: ${dirState.error}</div>`;
+  const {research:rs,live:lv}=dirState;
+  const anyValid=['5m','15m'].some(iv=>rs.tf[iv].results.some(q=>q.valid));
+  const col=b=>b==='LONG'?'var(--up)':b==='SHORT'?'var(--dn)':'var(--mut)';
+  const box=iv=>{const v=lv[iv];return `<div style="border:1px solid var(--line);border-radius:8px;padding:12px"><div class="mut">${iv} direction bias</div><div style="font-size:30px;font-weight:700;color:${col(v.bias)}">${v.bias}</div>
+   <div class="mut" style="margin-bottom:6px">${v.up_points} up points · ${v.down_points} down points</div>
+   ${v.up.map(x=>`<div><span class="up">▲</span> ${x}</div>`).join('')}${v.down.map(x=>`<div><span class="dn">▼</span> ${x}</div>`).join('')}
+   <div class="kv" style="margin-top:8px"><span>RSI</span><span>${fmt(v.rsi,0)}</span><span>20-candle range</span><span>${fmt(v.low20,0)} – ${fmt(v.high20,0)}</span><span>Typical move (ATR)</span><span>${fmt(v.atr_pct*100,2)}% per candle</span><span>Tested rule firing</span><span>${v.rules_firing.length?v.rules_firing.join(', '):'none'}</span></div></div>`};
+  const planBox=iv=>{const v=lv[iv];const row=(sd)=>{const p=v.plans[sd],L=sd==='long',lead=v.bias===sd.toUpperCase();return `<div style="border:1px solid ${lead?(L?'var(--up)':'var(--dn)'):'var(--line)'};border-radius:8px;padding:10px"><b style="color:${L?'var(--up)':'var(--dn)'}">${sd.toUpperCase()}</b> ${lead?'<span class="tag">matches bias</span>':''}
+   <div class="kv" style="margin-top:6px"><span>1. Enter</span><span>when a ${iv} candle CLOSES ${L?'above':'below'} <b>$${fmt(p.trigger,0)}</b> (${fmt(p.away_pct*100,2)}% from price now). Enter at about $${fmt(p.entry,0)}</span><span>2. Stop</span><span style="color:var(--dn)"><b>$${fmt(p.stop,0)}</b> (${fmt(p.risk_pct*100,2)}% away)</span><span>3. Target</span><span style="color:var(--up)"><b>$${fmt(p.target,0)}</b></span><span>4. Time exit</span><span>close it at market after ${p.time_exit_candles} candles if neither is hit</span><span>Cancel</span><span>${p.cancel_if}</span><span>Size</span><span>$${fmt(p.notional,0)} · loses $${fmt(p.loss_at_stop)} at the stop, makes $${fmt(p.gain_at_target)} at target (fees $${fmt(p.fees)} included)</span></div></div>`};
+   return `<div><div class="mut" style="margin-bottom:6px"><b>${iv} plan</b> (stop 2 ATR, target 1.5R: the settings the test picked)</div><div style="display:grid;gap:10px">${row('long')}${row('short')}</div></div>`};
+  const rows=['5m','15m'].flatMap(iv=>rs.tf[iv].results.filter(q=>q.test).map(q=>`<tr><td>${iv}</td><td>${q.strategy.replace(/_/g,' ')}</td><td>${q.side}</td><td class="n">${q.stop_atr}/${q.target_r}</td><td class="n ${cls(q.train.avg_R)}">${q.train.avg_R>=0?'+':''}${fmt(q.train.avg_R,2)}R</td><td class="n">${q.test.trades}</td><td class="n">${fmt(q.test.win_rate*100,0)}%</td><td class="n ${cls(q.test.avg_R)}">${q.test.avg_R>=0?'+':''}${fmt(q.test.avg_R,2)}R</td><td>${q.valid?'<span class="pill up">held up</span>':'<span class="pill dn">failed</span>'}</td></tr>`)).join('');
+  const fees=rs.fees.map(f=>`<tr><td>${f.label}</td><td class="n">${f['5m'].valid}</td><td class="n ${cls(f['5m'].best_test_avg_R)}">${fmt(f['5m'].best_test_avg_R,2)}R</td><td class="n">${f['15m'].valid}</td><td class="n ${cls(f['15m'].best_test_avg_R)}">${fmt(f['15m'].best_test_avg_R,2)}R</td></tr>`).join('');
+  return `<div class="card" style="border-left:5px solid ${anyValid?'var(--up)':'var(--warn)'}"><h2><span>BTC direction · 5m / 15m</span><span class="tag">${rs.as_of}</span></h2>
+  <div class="grid2">${box('5m')}${box('15m')}</div>
+  <h2 style="margin-top:16px">Exact levels if you want to trade it anyway</h2><div class="grid2">${planBox('5m')}${planBox('15m')}</div>
+  <div class="note" style="margin-bottom:6px">These are mechanical levels from the breakout rule, which failed the test above. They set where you would get in, out and stop, they do not say the trade will win. Place the stop the moment you are in.</div>
+  <div style="margin:14px 0 4px;font-size:16px;font-weight:600">${anyValid?'At least one rule held up out-of-sample at your fee level. See below.':'Tradeable edge: none. No tested rule made money on BTC 5m or 15m after fees.'}</div>
+  <div class="mut">The bias above says which way price is leaning right now. It is not a trade signal: leaning one way for a few candles has not been enough to beat trading costs.</div>
+  <h2 style="margin-top:16px">Walk-forward test · rules picked on the first 60%, judged on the last 40% they never saw</h2>
+  <div style="overflow-x:auto"><table><thead><tr><th>TF</th><th>Rule</th><th>Side</th><th class="n">Stop ATR / target R</th><th class="n">Train avg</th><th class="n">Test trades</th><th class="n">Win rate</th><th class="n">Test avg</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  <h2 style="margin-top:16px">Does it work with cheaper fees? (best test result per timeframe)</h2>
+  <table><thead><tr><th>Fee assumption</th><th class="n">5m rules that held</th><th class="n">5m best</th><th class="n">15m rules that held</th><th class="n">15m best</th></tr></thead><tbody>${fees}</tbody></table>
+  <div class="note">Rules tested: breakout on volume, breakout only with the 1h trend, pullback to the 20 EMA with the 1h trend, RSI extreme fade. Entry at the next candle's open, stop and target in ATR, 48-candle time stop. R = multiples of the risk taken, net of fees. 5m covers ${rs.tf['5m'].days} days and 15m ${rs.tf['15m'].days} days, so results describe recent conditions only, and the shorts may have just benefited from a down period. The 15m maker-ish figure rests on about 30 trades and assumes every order fills as a maker, which it will not.</div></div>`;
+}
+async function loadDir(){try{dirState=await (await fetch('/api/btcdir')).json()}catch(e){dirState={error:e.message}}if(window._a)render(window._a)}
 function render(a){
+  window._a=a;
   const tr=t=>`<span class="pill ${t==='up'?'up':t==='down'?'dn':'mx'}">${t}</span>`;
   const h=(x)=>x.fires?`${x.fires} fires · ${x.target}T/${x.stop}S · ${x.avg_R>=0?'+':''}${fmt(x.avg_R,2)}R`:'no fires';
   const pl=(s)=>{const p=a.plans[s];return `<div><b class="${s==='long'?'up':'dn'}">${s.toUpperCase()} now</b> (15m, ATR stop)<div class="kv" style="margin-top:6px"><span>Entry</span><span>$${fmt(p.entry,1)}</span><span>Stop</span><span>$${fmt(p.stop,1)} (${fmt(p.stop_pct*100,2)}%)</span><span>Target</span><span>$${fmt(p.target,1)}</span><span>Size</span><span>$${fmt(p.notional)} notional, 1x</span><span>Risk / reward</span><span>-$${fmt(p.loss_at_stop)} / +$${fmt(p.gain_at_target)}</span></div></div>`};
   document.getElementById('app').replaceChildren(
+   $(dirCard()),
    $(`<div class="card"><div style="display:flex;flex-wrap:wrap;gap:24px;align-items:baseline"><span class="big">$${fmt(a.price,1)}</span><span class="${cls(a.chg_24h)}" style="font-size:18px;font-weight:600">${a.chg_24h>=0?'+':''}${fmt(a.chg_24h*100,2)}% 24h</span><span class="pill ${/bull|up/.test(a.bias)?'up':/bear|down/.test(a.bias)?'dn':'mx'}" style="font-size:14px">${a.bias}</span></div>
    <div class="stats" style="margin-top:14px"><div><span>24h volume</span><b>$${fmt(a.volume_24h/1e9,2)}B</b></div><div><span>Open interest</span><b>$${fmt(a.open_interest_usd/1e9,2)}B</b></div><div><span>Funding / hour</span><b>${fmt(a.funding_hr*100,4)}%</b></div><div><span>Funding APR</span><b>${fmt(a.funding_apr*100,1)}%</b></div><div><span>Perp premium</span><b>${fmt(a.premium*100,3)}%</b></div><div><span>Max leverage</span><b>${a.max_leverage}x</b></div></div></div>`),
    $(`<div class="card"><h2><span>15-minute chart · last 24 h · blue = 20 EMA</span></h2>${chart(a)}</div>`),
@@ -62,5 +93,5 @@ function render(a){
   document.getElementById('upd').textContent='updated '+a.as_of+' · refreshes every 20 s';
 }
 async function load(){try{const r=await fetch('/api/btc');const a=await r.json();if(a.error)throw new Error(a.error);render(a)}catch(e){document.getElementById('upd').textContent='error: '+e.message}}
-load();setInterval(load,20000);
+load();loadDir();setInterval(load,20000);setInterval(loadDir,300000);
 </script></body></html>
