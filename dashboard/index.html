@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Day Trader Dashboard</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--mut:#667085;--line:#e4e7ec;--up:#12805c;--dn:#c0352b;--acc:#2f5bea;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--ink:#e8ebf0;--mut:#8b94a3;--line:#262c36;--up:#3ecf9a;--dn:#ff6b60;--acc:#6e8dff;--warn:#e0a84a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,system-ui,Segoe UI,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0}main{max-width:1200px;margin:0 auto;padding:20px 24px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 12px;display:flex;justify-content:space-between;gap:8px}
+.tag{font-size:11px;padding:1px 8px;border-radius:99px;background:var(--line);color:var(--mut);text-transform:none;letter-spacing:0}
+.tag.demo{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.pill{padding:3px 10px;border-radius:99px;font-weight:600;font-size:12px}.open{background:color-mix(in srgb,var(--up) 18%,transparent);color:var(--up)}.closed{background:color-mix(in srgb,var(--dn) 15%,transparent);color:var(--dn)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}th{color:var(--mut);font-weight:500;font-size:12px}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.chip{border:1px solid var(--line);background:none;color:var(--ink);border-radius:99px;padding:3px 11px;cursor:pointer;font:inherit;font-size:12px}.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.setup{display:inline-block;font-size:11px;padding:1px 8px;border-radius:6px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);margin-right:4px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.grid2{grid-template-columns:1fr}main{padding:12px}}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px}.kv span:nth-child(odd){color:var(--mut)}
+.bar{display:flex;height:26px;border-radius:6px;overflow:hidden;margin:8px 0}.bar div{display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600}
+.verdict{font-size:16px;font-weight:600;margin:4px 0}.mut{color:var(--mut)}svg text{fill:var(--mut);font-size:11px}
+pre{background:var(--bg);padding:10px;border-radius:8px;overflow:auto;font-size:12px;margin:0;max-height:260px}
+.note{font-size:12px;color:var(--mut);margin-top:10px}
+</style></head><body>
+<header><h1>Day Trader Dashboard</h1><div><span id="clock" class="pill closed">…</span> <span class="mut" id="clocktxt"></span></div></header>
+<main id="app"><div class="card">Loading…</div></main>
+<script>
+const $=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
+const fmt=(x,d=2)=>x==null?'–':Number(x).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=x=>fmt(x*100,1)+' %';
+const NAMES={breakout_20d:'20-day breakout',bull_flag:'bull flag',reclaim_20d:'reclaimed 20d avg',oversold:'oversold',oversold_bounce:'oversold bounce',orb:'opening-range breakout'};
+const nice=s=>NAMES[s]||s.replace(/_/g,' ');
+let state=null,filter='all';
+function tag(name){return state.demo.includes(name)?'<span class="tag demo">demo data</span>':''}
+function watchlist(){
+  const w=state.files.watchlist;if(!w)return '<div class="card"><h2>Watchlist</h2>No scan yet. Run <code>/trader-scanner</code> or <code>python3 trader-scanner/scan.py daily</code>.</div>';
+  const setups=[...new Set(w.hits.flatMap(h=>h.setups))];
+  const hits=w.hits.filter(h=>filter==='all'||h.setups.includes(filter));
+  return `<div class="card"><h2><span>Watchlist · ${w.mode} scan</span><span class="tag">${w.as_of||''} · ${w.scanned} charts scanned · ${w.hits.length} hits</span></h2>
+  <div class="chips"><button class="chip ${filter==='all'?'on':''}" data-f="all">all (${w.hits.length})</button>${setups.map(s=>`<button class="chip ${filter===s?'on':''}" data-f="${s}">${nice(s)} (${w.hits.filter(h=>h.setups.includes(s)).length})</button>`).join('')}</div>
+  <table><thead><tr><th>Symbol</th><th>Setups</th><th class="n">Price</th><th class="n">RSI</th><th class="n">Volume</th></tr></thead><tbody>
+  ${hits.map(h=>`<tr><td><b>${h.symbol}</b></td><td>${h.setups.map(s=>`<span class="setup">${nice(s)}</span>`).join('')}</td><td class="n">$${fmt(h.price)}</td><td class="n" style="color:${h.rsi<30?'var(--dn)':h.rsi>70?'var(--up)':'inherit'}">${fmt(h.rsi,1)}</td><td class="n">${Number(h.volume).toLocaleString()}</td></tr>`).join('')}
+  </tbody></table><div class="note">${w.note||''}</div></div>`;
+}
+function fan(tm){
+  const m=tm.mc,p=tm.plan,B=m.bands,W=640,H=260,L=48,R=8,T=10,Bm=24;
+  const lo=Math.min(p.stop,...B.map(b=>b[0]))-1,hi=Math.max(p.target,...B.map(b=>b[4]))+1;
+  const x=i=>L+(W-L-R)*i/(B.length-1),y=v=>T+(H-T-Bm)*(hi-v)/(hi-lo);
+  const area=(a,b,op)=>`<path d="M${B.map((r,i)=>x(i)+','+y(r[a])).join('L')}L${B.map((r,i)=>x(B.length-1-i)+','+y(B[B.length-1-i][b])).join('L')}Z" fill="var(--acc)" opacity="${op}"/>`;
+  const line=v=>`M${B.map((r,i)=>x(i)+','+y(r[v])).join('L')}`;
+  const hl=(v,c,t)=>`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${c}" stroke-dasharray="4 3"/><text x="${L-4}" y="${y(v)+4}" text-anchor="end">${fmt(v)}</text><text x="${W-R-2}" y="${y(v)-4}" text-anchor="end" style="fill:${c}">${t}</text>`;
+  const ts=m.band_times,tick=[0,Math.floor(ts.length/2),ts.length-1].map(i=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${ts[i]}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%">${area(0,4,.12)}${area(1,3,.22)}<path d="${line(2)}" fill="none" stroke="var(--acc)" stroke-width="2"/>${hl(p.target,'var(--up)','target')}${hl(p.stop,'var(--dn)','stop')}${hl(p.entry,'var(--mut)','entry')}${tick}</svg>`;
+}
+function hist(tm){
+  const h=tm.mc.hist,p=tm.plan,W=640,H=150,mx=Math.max(...h.bins),bw=(W-20)/h.bins.length;
+  const xv=v=>10+(W-20)*(v-h.lo)/(h.hi-h.lo);
+  return `<svg viewBox="0 0 ${W} ${H+18}" width="100%">${h.bins.map((c,i)=>{const v=h.lo+(i+.5)*(h.hi-h.lo)/h.bins.length;const col=v>=p.entry?'var(--up)':'var(--dn)';return `<rect x="${10+i*bw}" y="${H-H*c/mx}" width="${bw-1}" height="${H*c/mx}" fill="${col}" opacity=".7"/>`}).join('')}
+  <line x1="${xv(p.entry)}" x2="${xv(p.entry)}" y1="0" y2="${H}" stroke="var(--ink)"/><text x="${xv(p.entry)+4}" y="12">entry</text>
+  <text x="10" y="${H+14}">${fmt(h.lo)}</text><text x="${W-10}" y="${H+14}" text-anchor="end">${fmt(h.hi)}</text></svg>`;
+}
+function timemachine(){
+  const tm=state.files.timemachine;if(!tm)return '<div class="card"><h2>Time Machine</h2>No replay yet. Run <code>/trader-timemachine</code> after <code>/trader-exit</code>.</div>';
+  const m=tm.mc,p=tm.plan,h=tm.history;
+  return `<div class="card"><h2><span>Time Machine · ${p.symbol} ${p.date}</span>${tag('timemachine')}</h2>
+  <div class="verdict">${tm.verdict}</div>
+  <div class="bar"><div style="width:${m.p_target*100}%;background:var(--up)">target ${pct(m.p_target)}</div><div style="width:${m.p_neither*100}%;background:var(--mut)">neither ${pct(m.p_neither)}</div><div style="width:${m.p_stop*100}%;background:var(--dn)">stop ${pct(m.p_stop)}</div></div>
+  <div class="grid2" style="margin-top:12px"><div><div class="kv"><span>Entry</span><span>$${fmt(p.entry)} at ${p.entry_time}</span><span>Stop</span><span>$${fmt(p.stop)} (risk ${fmt(p.risk_per_share)}/sh)</span><span>Target</span><span>$${fmt(p.target)} (${p.target_r}R)</span><span>Median close</span><span>$${fmt(m.median_close)} (90% in ${fmt(m.p5_close)}–${fmt(m.p95_close)})</span><span>Average R</span><span>${m.avg_R>=0?'+':''}${fmt(m.avg_R,3)}</span><span>Green at close</span><span>${pct(m.p_green)}</span></div></div>
+  <div><div class="kv"><span>Replays</span><span>${m.replays.toLocaleString()} (seed ${m.seed})</span><span>History</span><span>${h.triggered} fires in ${h.sessions} sessions</span><span>Hit target</span><span>${h.target}</span><span>Hit stop</span><span>${h.stop}</span><span>Neither</span><span>${h.close}</span><span>Historic avg R</span><span>${h.avg_R>=0?'+':''}${fmt(h.avg_R,3)}</span></div></div></div>
+  <h2 style="margin-top:18px">Where the replays go (median, middle half, 90%)</h2>${fan(tm)}
+  <h2 style="margin-top:14px">Price at the close, 10,000 replays</h2>${hist(tm)}
+  <div class="note">${tm.note}</div></div>`;
+}
+function raw(name,title,hint){
+  const d=state.files[name];
+  return `<div class="card"><h2><span>${title}</span>${d?tag(name):''}</h2>${d?`<pre>${JSON.stringify(d,null,1).replace(/</g,'&lt;')}</pre>`:`<span class="mut">${hint}</span>`}</div>`;
+}
+function render(){
+  document.getElementById('app').replaceChildren(
+    $(watchlist()),$(timemachine()),
+    $(`<div class="grid2">${raw('plan','Trade plan','Run /trader-exit.')}${raw('entry','Entry signal','Run /trader-entry.')}${raw('orders','Orders (not placed)','Run /trader-budget.')}${raw('risk','Risk verdicts','Run /trader-risk.')}${raw('alerts','Alerts','Run /trader-alerts add --from-plan.')}${raw('prices','Prices','Run /trader-alerts quote.')}</div>`));
+  document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{filter=b.dataset.f;render()});
+}
+async function load(){
+  state=await (await fetch('/api/state')).json();
+  const c=document.getElementById('clock'),open=/open/i.test(state.clock.split('\n')[0])&&!/closed/i.test(state.clock.split('\n')[0]);
+  c.textContent=open?'NYSE open':'NYSE closed';c.className='pill '+(open?'open':'closed');
+  document.getElementById('clocktxt').textContent=state.clock.replace(/\n/g,' · ');
+  render();
+}
+load();setInterval(load,30000);
+</script></body></html>
