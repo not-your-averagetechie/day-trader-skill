@@ -15,7 +15,7 @@ import time
 import urllib.request
 
 URL = "https://api.hyperliquid.xyz/info"
-MS = {"15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000}
+MS = {"5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000}
 
 
 def post(body):

@@ -72,13 +72,27 @@ function timemachine(){
   <h2 style="margin-top:14px">Price at the close, 10,000 replays</h2>${hist(tm)}
   <div class="note">${tm.note}</div></div>`;
 }
+function signals(){
+  const g=state.files.hl_signals;
+  if(!g)return '<div class="card"><h2>Crypto signals · 5m / 15m</h2>No signals file yet. Run <code>python3 trader-hl/signals.py --loop 60</code>.</div>';
+  const px=v=>fmt(v,v<1?5:v<100?3:2);
+  const body=g.signals.length?g.signals.map(s=>{const p=s.plan,o=s.odds,h=s.history,L=s.side==='long',col=L?'var(--up)':'var(--dn)',blk=!p.stop_before_liquidation;
+  return `<div style="border:1px solid var(--line);border-left:4px solid ${col};border-radius:8px;padding:12px;margin-bottom:10px">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><b style="font-size:16px">${s.symbol} <span style="color:${col}">${s.side.toUpperCase()}</span> <span class="tag">${s.interval}</span></b><span class="mut">funding ${fmt(s.funding_hr*100,4)}%/h · max ${s.max_leverage}x</span></div>
+  <div class="grid2" style="margin-top:8px"><div class="kv"><span>Entry</span><span>$${px(p.entry)}</span><span>Stop</span><span style="color:var(--dn)">$${px(p.stop)} (${fmt(p.stop_pct*100,2)}%)</span><span>Target</span><span style="color:var(--up)">$${px(p.target)}</span><span>Size</span><span>$${fmt(p.notional)} notional · ${p.leverage}x · margin $${fmt(p.margin)}</span><span>Risk / reward</span><span>-$${fmt(p.loss_at_stop)} / +$${fmt(p.gain_at_target)} (fees $${fmt(p.fees_round_trip)})</span><span>Liquidation</span><span>${p.liquidation?'$'+px(p.liquidation):'none at this leverage'}</span></div>
+  <div><div class="bar"><div style="width:${o.p_target*100}%;background:var(--up)">${pct(o.p_target)}</div><div style="width:${o.p_neither*100}%;background:var(--mut)"></div><div style="width:${o.p_stop*100}%;background:var(--dn)">${pct(o.p_stop)}</div></div>
+  <div class="kv"><span>Replays</span><span>${o.replays.toLocaleString()} target / stop first</span><span>History</span><span>${h.fires} fires · ${h.target} target · ${h.stop} stop · avg ${h.avg_R==null?'–':(h.avg_R>=0?'+':'')+fmt(h.avg_R,2)+'R'}</span></div></div></div>
+  <div class="verdict" style="font-size:13px;color:${blk?'var(--dn)':'inherit'}">${s.verdict}</div></div>`}).join(''):`<div class="mut">No coin has a signal on its last completed candle right now. That is normal: this rule fires rarely. Page refreshes every 30 s.</div>`;
+  return `<div class="card"><h2><span>Crypto signals · ${g.intervals.join(' / ')}</span><span class="tag">${g.as_of} · ${g.scanned} candle sets · max loss $${g.limits.max_loss} · size $${g.limits.size}</span></h2>${body}
+  <div class="note">Rule: close beyond the 20-candle high/low on ${g.rule.volume_x}x volume; stop ${g.rule.stop_atr} ATR; target ${g.rule.target_r}R; time stop ${g.rule.horizon_candles} candles; fees ${(g.rule.fee_round_trip*100).toFixed(2)}% round trip. ${g.note}</div></div>`;
+}
 function raw(name,title,hint){
   const d=state.files[name];
   return `<div class="card"><h2><span>${title}</span>${d?tag(name):''}</h2>${d?`<pre>${JSON.stringify(d,null,1).replace(/</g,'&lt;')}</pre>`:`<span class="mut">${hint}</span>`}</div>`;
 }
 function render(){
   document.getElementById('app').replaceChildren(
-    $(watchlist()),$(watchlist('hl_watchlist')),$(timemachine()),
+    $(signals()),$(watchlist()),$(watchlist('hl_watchlist')),$(timemachine()),
     $(`<div class="grid2">${raw('plan','Trade plan','Run /trader-exit.')}${raw('entry','Entry signal','Run /trader-entry.')}${raw('orders','Orders (not placed)','Run /trader-budget.')}${raw('risk','Risk verdicts','Run /trader-risk.')}${raw('alerts','Alerts','Run /trader-alerts add --from-plan.')}${raw('prices','Prices','Run /trader-alerts quote.')}</div>`));
   document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{filter[b.dataset.k]=b.dataset.f;render()});
 }
