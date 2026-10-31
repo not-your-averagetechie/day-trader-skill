@@ -53,6 +53,15 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(os.path.join(HERE, "index.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if path == "/btc":
+            with open(os.path.join(HERE, "btc.html"), "rb") as fh:
+                return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if path == "/api/btc":
+            import btc
+            try:
+                return self._send(200, json.dumps(btc.analyse()).encode(), "application/json")
+            except Exception as e:  # noqa: BLE001
+                return self._send(502, json.dumps({"error": str(e)}).encode(), "application/json")
         if path == "/api/state":
             files, demo = {}, []
             for n in NAMES:
