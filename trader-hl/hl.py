@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 URL = "https://api.hyperliquid.xyz/info"
@@ -20,8 +21,14 @@ MS = {"5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000
 
 def post(body):
     req = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.load(r)
+    for k in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or k == 4:
+                raise
+            time.sleep(2 * (k + 1))  # rate limited: back off and retry
 
 
 def candles(coin, interval, n=60):

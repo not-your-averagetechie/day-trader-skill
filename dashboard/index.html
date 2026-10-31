@@ -86,13 +86,31 @@ function signals(){
   return `<div class="card"><h2><span>Crypto signals · ${g.intervals.join(' / ')}</span><span class="tag">${g.as_of} · ${g.scanned} candle sets · max loss $${g.limits.max_loss} · size $${g.limits.size}</span></h2>${body}
   <div class="note">Rule: close beyond the 20-candle high/low on ${g.rule.volume_x}x volume; stop ${g.rule.stop_atr} ATR; target ${g.rule.target_r}R; time stop ${g.rule.horizon_candles} candles; fees ${(g.rule.fee_round_trip*100).toFixed(2)}% round trip. ${g.note}</div></div>`;
 }
+let rankState=null;
+function verdictCard(){
+  const r=rankState;
+  if(!r)return '<div class="card"><h2>Verdict</h2><span class="mut">Scanning the 25 most liquid perps (about a minute the first time)…</span></div>';
+  if(r.error)return `<div class="card"><h2>Verdict</h2>Scan error: ${r.error}</div>`;
+  const c=r.candidates[0],p=c.plan,L=c.side==='long',col=r.call==='SETUP'?(L?'var(--up)':'var(--dn)'):r.call==='NO TRADE'?'var(--mut)':'var(--warn)';
+  const px=v=>fmt(v,v<1?5:v<100?3:2);
+  const head=r.call==='ARMED'?`ARMED, NOT TRIGGERED: ${c.symbol} ${c.side.toUpperCase()}`:r.call==='SETUP'?`SETUP: ${c.symbol} ${c.side.toUpperCase()}`:r.call==='WATCH'?`WATCH: ${c.symbol} ${c.side.toUpperCase()} is closest`:'NO TRADE: nothing lines up';
+  const missing=r.checks.filter((_,i)=>!c.checks[i]);
+  const trig=c.checks[3]?'The breakout candle has closed. The entry condition is met.':`Entry waits for a 15m candle to CLOSE ${L?'above':'below'} $${px(c.trigger)} on at least 1.5x volume.`;
+  return `<div class="card" style="border-left:5px solid ${col}"><h2><span>Verdict · rules-based, 25 most liquid perps</span><span class="tag">${r.as_of} · refreshes every 90 s</span></h2>
+  <div class="big" style="font-size:26px;font-weight:700;color:${col}">${head}</div><div class="mut" style="margin:2px 0 12px">Score ${c.score} of 7. ${r.call==='SETUP'?'All the conditions are met.':r.call==='ARMED'?'Everything but the entry candle lines up. Do nothing until that candle closes.':'It takes 6 of 7 including the entry candle to call a setup, so the honest answer right now is to wait.'}</div>
+  <div class="grid2"><div><div class="kv"><span>If it triggers</span><span><b>${c.side.toUpperCase()} ${c.symbol}</b> at about $${px(c.plan.entry)}</span><span>Stop</span><span style="color:var(--dn)">$${px(p.stop)} (${fmt(p.stop_pct*100,2)}% away)</span><span>Target</span><span style="color:var(--up)">$${px(p.target)}</span><span>Size</span><span>$${fmt(p.notional)} notional · ${p.leverage}x</span><span>Risk / reward</span><span>-$${fmt(p.loss_at_stop)} / +$${fmt(p.gain_at_target)} after fees</span><span>Trigger</span><span>${trig}</span></div></div>
+  <div>${r.checks.map((t,i)=>`<div>${c.checks[i]?'<span class="up">✔</span>':'<span class="dn">✘</span>'} ${t}</div>`).join('')}</div></div>
+  <div style="margin-top:12px"><b>Next best:</b> ${r.candidates.slice(1,5).map(x=>`${x.symbol} ${x.side} (${x.score}/7)`).join(' · ')}</div>
+  <div class="note">${missing.length?'Missing: '+missing.join('; ')+'. ':''}This is a checklist over public data and past candles, not financial advice, and a passing score is not a prediction. Nothing here places an order.</div></div>`;
+}
+async function loadRank(){try{rankState=await (await fetch('/api/rank')).json()}catch(e){rankState={error:e.message}}if(state)render()}
 function raw(name,title,hint){
   const d=state.files[name];
   return `<div class="card"><h2><span>${title}</span>${d?tag(name):''}</h2>${d?`<pre>${JSON.stringify(d,null,1).replace(/</g,'&lt;')}</pre>`:`<span class="mut">${hint}</span>`}</div>`;
 }
 function render(){
   document.getElementById('app').replaceChildren(
-    $(signals()),$(watchlist()),$(watchlist('hl_watchlist')),$(timemachine()),
+    $(verdictCard()),$(signals()),$(watchlist()),$(watchlist('hl_watchlist')),$(timemachine()),
     $(`<div class="grid2">${raw('plan','Trade plan','Run /trader-exit.')}${raw('entry','Entry signal','Run /trader-entry.')}${raw('orders','Orders (not placed)','Run /trader-budget.')}${raw('risk','Risk verdicts','Run /trader-risk.')}${raw('alerts','Alerts','Run /trader-alerts add --from-plan.')}${raw('prices','Prices','Run /trader-alerts quote.')}</div>`));
   document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{filter[b.dataset.k]=b.dataset.f;render()});
 }
@@ -103,5 +121,5 @@ async function load(){
   document.getElementById('clocktxt').textContent=state.clock.replace(/\n/g,' · ');
   render();
 }
-load();setInterval(load,30000);
+load();loadRank();setInterval(load,30000);setInterval(loadRank,90000);
 </script></body></html>

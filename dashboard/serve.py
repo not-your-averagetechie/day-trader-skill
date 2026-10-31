@@ -56,6 +56,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/btc":
             with open(os.path.join(HERE, "btc.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if path == "/api/rank":
+            import rank
+            try:
+                return self._send(200, json.dumps(rank.ranking()).encode(), "application/json")
+            except Exception as e:  # noqa: BLE001
+                return self._send(502, json.dumps({"error": str(e)}).encode(), "application/json")
         if path == "/api/btc":
             import btc
             try:
