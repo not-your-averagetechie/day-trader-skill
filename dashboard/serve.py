@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-NAMES = ["watchlist", "entry", "plan", "timemachine", "orders", "risk", "alerts", "prices"]
+NAMES = ["watchlist", "hl_watchlist", "entry", "plan", "timemachine", "orders", "risk", "alerts", "prices"]
 
 
 def load(path):
